@@ -24,10 +24,10 @@ const API_BASE_URL = (() => {
 })();
 const $ = (selector) => document.querySelector(selector);
 const medicineList = $("#medicineList");
+const LOW_STOCK_THRESHOLD = 5;
 let medicines = [];
 let activeFilter = "All";
 let authToken = localStorage.getItem("medicineTrackerToken") || "";
-let expiryDateWasEntered = false;
 
 function normalizeUsername(value) {
     const trimmed = String(value || "").trim();
@@ -124,6 +124,7 @@ function handleLocalApiRequest(path, options = {}) {
         if (method === "POST") {
             const medicine = {
                 ...body,
+                expiryType: body?.expiryType === "best_before" ? "best_before" : "expiry",
                 id: body?.id || `med-${Date.now()}-${Math.random().toString(16).slice(2)}`,
                 quantity: Number(body?.quantity || 0)
             };
@@ -189,7 +190,7 @@ async function apiRequest(path, options = {}) {
 }
 
 function updateExpiryDate() {
-    if (expiryDateWasEntered) return;
+    if ($("input[name='expiryType']:checked").value !== "best_before") return;
 
     const manufacturingDate = $("#manufacturingDate").value;
     const shelfLifeYears = Number($("#shelfLifeYears").value);
@@ -225,6 +226,28 @@ function getStatus(daysLeft) {
     return "Safe";
 }
 
+function isLowStock(medicine) {
+    return Number(medicine.quantity) <= LOW_STOCK_THRESHOLD;
+}
+
+function getExpiryTypeLabel(expiryType) {
+    return expiryType === "best_before" ? "Best before" : "Exact expiry date";
+}
+
+function updateExpiryTypeLabel() {
+    const expiryType = $("input[name='expiryType']:checked").value;
+    const isBestBefore = expiryType === "best_before";
+    $("#shelfLifeField").hidden = !isBestBefore;
+    $("#shelfLifeYears").required = isBestBefore;
+    $("#expiryDateField").hidden = isBestBefore;
+    $("#expiryDate").required = !isBestBefore;
+    if (isBestBefore) {
+        updateExpiryDate();
+    } else {
+        $("#expiryDate").value = "";
+    }
+}
+
 function escapeHtml(value) {
     return String(value).replace(/[&<>\'\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" }[character]));
 }
@@ -235,7 +258,9 @@ function displayMedicines() {
         .map((medicine, index) => ({ medicine, index, daysLeft: getDaysLeft(medicine) }))
         .filter(({ medicine, daysLeft }) => {
             const status = getStatus(daysLeft);
-            const matchesFilter = activeFilter === "All" || status === activeFilter;
+            const matchesFilter = activeFilter === "Low Stock"
+                ? isLowStock(medicine)
+                : activeFilter === "All" || status === activeFilter;
             const matchesSearch = (medicine.name || "").toLowerCase().includes(searchTerm) || (medicine.batch || "").toLowerCase().includes(searchTerm);
             return matchesFilter && matchesSearch;
         });
@@ -244,6 +269,16 @@ function displayMedicines() {
     $("#safeCount").textContent = medicines.filter((medicine) => getStatus(getDaysLeft(medicine)) === "Safe").length;
     $("#soonCount").textContent = medicines.filter((medicine) => getStatus(getDaysLeft(medicine)) === "Expiring Soon").length;
     $("#expiredCount").textContent = medicines.filter((medicine) => getStatus(getDaysLeft(medicine)) === "Expired").length;
+
+    const lowStockMedicines = medicines.filter(isLowStock);
+    const lowStockAlert = $("#lowStockAlert");
+    lowStockAlert.hidden = lowStockMedicines.length === 0;
+    if (lowStockMedicines.length) {
+        const medicineListText = lowStockMedicines
+            .map((medicine) => `${escapeHtml(medicine.name)} (${escapeHtml(medicine.quantity)} units)`)
+            .join(", ");
+        $("#lowStockMessage").innerHTML = `${lowStockMedicines.length} ${lowStockMedicines.length === 1 ? "medicine is" : "medicines are"} at or below ${LOW_STOCK_THRESHOLD} units: ${medicineListText}`;
+    }
 
     if (!filtered.length) {
         medicineList.innerHTML = `<div class="empty-state"><span>~</span><h3>No medicines found</h3><p>Add a medicine or adjust your search and filters.</p></div>`;
@@ -254,7 +289,8 @@ function displayMedicines() {
         const status = getStatus(daysLeft);
         const daysLabel = daysLeft < 0 ? `${Math.abs(daysLeft)} days overdue` : `${daysLeft} days left`;
         const statusClass = status.toLowerCase().replace(" ", "-");
-        return `<div class="table-row"><div class="medicine-name"><span class="medicine-icon">+</span><strong>${escapeHtml(medicine.name)}</strong></div><span class="muted">${escapeHtml(medicine.batch)}</span><span class="date-stack"><b>${escapeHtml(medicine.expiryDate)}</b><small>Made ${escapeHtml(medicine.manufacturingDate)}</small></span><span>${escapeHtml(medicine.quantity)} units</span><span><b class="status ${statusClass}">${status}</b><small class="days-left">${daysLabel}</small></span><button class="delete-button" data-id="${medicine.id || index}" aria-label="Delete ${escapeHtml(medicine.name)}">Delete</button></div>`;
+        const lowStockLabel = isLowStock(medicine) ? `<small class="low-stock-label">Low stock</small>` : "";
+        return `<div class="table-row"><div class="medicine-name"><span class="medicine-icon">+</span><strong>${escapeHtml(medicine.name)}</strong></div><span class="muted">${escapeHtml(medicine.batch)}</span><span class="date-stack"><b>${escapeHtml(medicine.expiryDate)}</b><small>${escapeHtml(getExpiryTypeLabel(medicine.expiryType))} · Made ${escapeHtml(medicine.manufacturingDate)}</small></span><span>${escapeHtml(medicine.quantity)} units</span><span><b class="status ${statusClass}">${status}</b>${lowStockLabel}<small class="days-left">${daysLabel}</small></span><button class="delete-button" data-id="${medicine.id || index}" aria-label="Delete ${escapeHtml(medicine.name)}">Delete</button></div>`;
     }).join("")}</div>`;
 }
 
@@ -276,20 +312,22 @@ async function loadMedicines() {
 
 async function saveMedicine(event) {
     event.preventDefault();
-    updateExpiryDate();
+    const expiryType = $("input[name='expiryType']:checked").value;
+    if (expiryType === "best_before") updateExpiryDate();
 
     try {
         const payload = {
             name: $("#medicineName").value.trim(),
             batch: $("#batchNumber").value.trim(),
             manufacturingDate: $("#manufacturingDate").value,
+            expiryType,
             expiryDate: $("#expiryDate").value,
             quantity: Number($("#quantity").value)
         };
 
         await apiRequest("/medicines", { method: "POST", body: JSON.stringify(payload) });
         event.target.reset();
-        expiryDateWasEntered = false;
+        updateExpiryTypeLabel();
         $("#medicineDialog").close();
         await loadMedicines();
     } catch (error) {
@@ -399,10 +437,10 @@ $("#closeDialog").addEventListener("click", () => $("#medicineDialog").close());
 $("#medicineDialog").addEventListener("click", (event) => { if (event.target === $("#medicineDialog")) $("#medicineDialog").close(); });
 $("#manufacturingDate").addEventListener("input", updateExpiryDate);
 $("#shelfLifeYears").addEventListener("input", updateExpiryDate);
-$("#expiryDate").addEventListener("input", (event) => {
-    expiryDateWasEntered = Boolean(event.target.value);
-});
+$(".date-type-options").addEventListener("change", updateExpiryTypeLabel);
 $("#medicineForm").addEventListener("submit", saveMedicine);
+
+updateExpiryTypeLabel();
 
 $("#medicineList").addEventListener("click", (event) => {
     const button = event.target.closest(".delete-button");

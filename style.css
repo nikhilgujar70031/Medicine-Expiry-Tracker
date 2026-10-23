@@ -317,6 +317,47 @@ select:focus {
     margin-bottom: 28px;
 }
 
+.low-stock-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    margin: -7px 0 22px;
+    padding: 16px 18px;
+    color: #783c24;
+    background: #fff4e8;
+    border: 1px solid #f0d6ba;
+    border-radius: 13px;
+}
+
+.low-stock-alert[hidden] {
+    display: none;
+}
+
+.low-stock-alert-icon {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: #b66a2f;
+    border-radius: 50%;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.low-stock-alert strong {
+    font-size: 13px;
+}
+
+.low-stock-alert p {
+    margin: 4px 0 0;
+    color: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
 .summary-card {
     display: flex;
     align-items: center;
@@ -509,6 +550,14 @@ select:focus {
     background: #fae4e4;
 }
 
+.low-stock-label {
+    display: block;
+    margin-top: 5px;
+    color: var(--red);
+    font-size: 10px;
+    font-weight: 700;
+}
+
 .delete-button {
     padding: 0;
     color: var(--red);
@@ -564,6 +613,50 @@ select:focus {
     grid-template-columns: 1fr 1fr;
     gap: 0 15px;
     margin-bottom: 22px;
+}
+
+.form-grid > [hidden] {
+    display: none;
+}
+
+.form-grid .date-type-field {
+    min-width: 0;
+    margin: 12px 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.date-type-field legend {
+    color: #32443e;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.date-type-options {
+    display: flex;
+    gap: 8px;
+}
+
+.date-type-options label {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 7px;
+    min-height: 43px;
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border: 1px solid #dfe6df;
+    border-radius: 10px;
+    color: #32443e;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.date-type-options input {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    accent-color: var(--forest);
 }
 
 .form-grid > div:last-child {

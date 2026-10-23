@@ -35,11 +35,15 @@ def connect_db():
             batch TEXT NOT NULL,
             manufacturing_date TEXT NOT NULL,
             expiry_date TEXT NOT NULL,
+            expiry_type TEXT NOT NULL DEFAULT 'expiry',
             quantity INTEGER NOT NULL,
             FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
         )
         """
     )
+    medicine_columns = {row["name"] for row in conn.execute("PRAGMA table_info(medicines)").fetchall()}
+    if "expiry_type" not in medicine_columns:
+        conn.execute("ALTER TABLE medicines ADD COLUMN expiry_type TEXT NOT NULL DEFAULT 'expiry'")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS sessions (
@@ -108,7 +112,7 @@ def get_user_medicines(username):
     rows = conn.execute(
         """
         SELECT id, name, batch, manufacturing_date AS manufacturingDate,
-               expiry_date AS expiryDate, quantity
+               expiry_date AS expiryDate, expiry_type AS expiryType, quantity
         FROM medicines
         WHERE username = ?
         ORDER BY rowid
@@ -239,12 +243,18 @@ class MedicineHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"message": "All medicine fields are required."})
             return
 
+        expiry_type = str(payload.get("expiryType") or "expiry").strip()
+        if expiry_type not in ("expiry", "best_before"):
+            self._send_json(400, {"message": "Date type must be expiry or best_before."})
+            return
+
         medicine = {
             "id": payload.get("id") or secrets.token_urlsafe(8),
             "name": str(payload["name"]).strip(),
             "batch": str(payload["batch"]).strip(),
             "manufacturingDate": str(payload["manufacturingDate"]).strip(),
             "expiryDate": str(payload["expiryDate"]).strip(),
+            "expiryType": expiry_type,
             "quantity": int(payload["quantity"]),
         }
 
@@ -255,8 +265,8 @@ class MedicineHandler(BaseHTTPRequestHandler):
         conn = connect_db()
         conn.execute(
             """
-            INSERT INTO medicines (id, username, name, batch, manufacturing_date, expiry_date, quantity)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO medicines (id, username, name, batch, manufacturing_date, expiry_date, expiry_type, quantity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 medicine["id"],
@@ -265,6 +275,7 @@ class MedicineHandler(BaseHTTPRequestHandler):
                 medicine["batch"],
                 medicine["manufacturingDate"],
                 medicine["expiryDate"],
+                medicine["expiryType"],
                 medicine["quantity"],
             ),
         )
